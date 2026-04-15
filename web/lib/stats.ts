@@ -24,6 +24,11 @@ const browserAppNames: Record<string, string> = {
   msedge: 'Microsoft Edge'
 };
 
+const processAppNames: Record<string, string> = {
+  ...browserAppNames,
+  spotify: 'Spotify'
+};
+
 const siteKeywordMap: Array<{ keyword: string; domain: string }> = [
   { keyword: 'youtube', domain: 'youtube.com' },
   { keyword: 'instagram', domain: 'instagram.com' },
@@ -41,8 +46,8 @@ const siteKeywordMap: Array<{ keyword: string; domain: string }> = [
 ];
 
 function normalizeAppName(processName: string, appName: string): string {
-  const browserName = browserAppNames[processName.toLowerCase()];
-  return browserName ?? appName;
+  const friendlyName = processAppNames[processName.toLowerCase()];
+  return friendlyName ?? appName;
 }
 
 function normalizeDomain(domain: string): string {

@@ -69,6 +69,7 @@ public static class NativeMethods
             "firefox" => "Mozilla Firefox",
             "chrome" => "Google Chrome",
             "msedge" => "Microsoft Edge",
+            "spotify" => "Spotify",
             _ => string.IsNullOrWhiteSpace(windowTitle) ? processName : windowTitle
         };
     }

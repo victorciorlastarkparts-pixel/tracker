@@ -1,12 +1,12 @@
 ﻿**********************
 Início da transcrição do Windows PowerShell
-Hora de início: 20260415135223
+Hora de início: 20260415135719
 Nome de Usuário: SHOUKO\kamiy
 Executar como Usuário: SHOUKO\kamiy
 Nome da Configuração: 
 Computador: SHOUKO (Microsoft Windows NT 10.0.26200.0)
 Aplicativo Host: powershell -NoProfile -ExecutionPolicy Bypass -File D:\monitor.gate\agent\install-agent-logon.ps1 -LogPath D:\monitor.gate\agent\install-logon-log.txt
-ID do Processo: 13824
+ID do Processo: 16852
 PSVersion: 5.1.26100.7920
 PSEdition: Desktop
 PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7920
@@ -20,19 +20,3 @@ Publicando agente...
 Restaurando pacotes via NuGet source: https://api.nuget.org/v3/index.json
   Determinando os projetos a serem restaurados...
   Todos os projetos estão atualizados para restauração.
-  MonitorGate.Agent -> D:\monitor.gate\agent\MonitorGate.Agent\bin\Release\net8.0-windows\win-x64\MonitorGate.Agent.dll
-  MonitorGate.Agent -> D:\monitor.gate\agent\publish\
-Copiando arquivos para pasta de instalacao...
-PS>TerminatingError(Copy-Item): "O processo não pode acessar o arquivo 'C:\Program Files\MonitorGateAgent\e_sqlite3.dll' porque ele está sendo usado por outro processo."
-Atualizando appsettings.json...
-Criando tarefa agendada no logon...
-Iniciando agente agora (sessao atual)...
-Instalacao concluida com sucesso (modo logon).
-Tarefa: \MonitorGate\MonitorGateAgent-Logon
-Usuario: SHOUKO\kamiy
-Intervalo de sync: 120 segundos
-Log de instalacao: D:\monitor.gate\agent\install-logon-log.txt
-**********************
-Fim da transcrição do Windows PowerShell
-Hora de término: 20260415135230
-**********************
