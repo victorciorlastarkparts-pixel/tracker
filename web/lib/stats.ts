@@ -29,7 +29,21 @@ const processAppNames: Record<string, string> = {
   spotify: 'Spotify'
 };
 
-const browserTitleSuffixes = [' - Google Chrome', ' - Microsoft Edge', ' - Mozilla Firefox'];
+const browserNameSuffixRegex = /\s*[\-–—|:•·?]+\s*(Mozilla Firefox|Google Chrome|Microsoft Edge)\s*$/i;
+
+const siteKeywordMap: Array<{ keyword: string; domain: string }> = [
+  { keyword: 'chatgpt', domain: 'chatgpt.com' },
+  { keyword: 'openai', domain: 'chatgpt.com' },
+  { keyword: 'instagram', domain: 'instagram.com' },
+  { keyword: 'whatsapp', domain: 'web.whatsapp.com' },
+  { keyword: 'facebook', domain: 'facebook.com' },
+  { keyword: 'x.com', domain: 'x.com' },
+  { keyword: 'twitter', domain: 'x.com' },
+  { keyword: 'github', domain: 'github.com' },
+  { keyword: 'youtube', domain: 'youtube.com' },
+  { keyword: 'linkedin', domain: 'linkedin.com' },
+  { keyword: 'reddit', domain: 'reddit.com' }
+];
 
 function normalizeAppName(processName: string, appName: string): string {
   const friendlyName = processAppNames[processName.toLowerCase()];
@@ -41,14 +55,7 @@ function normalizeDomain(domain: string): string {
 }
 
 function normalizeBrowserTabTitle(title: string): string {
-  let cleaned = title.trim();
-
-  for (const suffix of browserTitleSuffixes) {
-    if (cleaned.toLowerCase().endsWith(suffix.toLowerCase())) {
-      cleaned = cleaned.slice(0, -suffix.length).trim();
-      break;
-    }
-  }
+  let cleaned = title.trim().replace(browserNameSuffixRegex, '').trim();
 
   // Prevent noisy chart labels when tabs include long generated names.
   if (cleaned.length > 100) {
@@ -77,8 +84,19 @@ function inferSiteLabel(activity: ActivityRow): string | null {
     return normalizeDomain(domainMatch[0]);
   }
 
+  const lowerTitle = browserTitle.toLowerCase();
+  for (const item of siteKeywordMap) {
+    if (lowerTitle.includes(item.keyword)) {
+      return item.domain;
+    }
+  }
+
   // If there is no domain, keep the tab title itself to avoid dropping browser activity.
   return browserTitle;
+}
+
+function normalizeSiteKey(label: string): string {
+  return label.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function toDayRange(day?: string): { start: Date; end: Date } | null {
@@ -149,7 +167,7 @@ export async function getStats(query: StatsQuery) {
   const totalMs = activities.reduce((acc: number, a: { durationMs: number }) => acc + a.durationMs, 0);
 
   const appMap = new Map<string, number>();
-  const siteMap = new Map<string, number>();
+  const siteMap = new Map<string, { name: string; durationMs: number }>();
 
   for (const item of activities) {
     const app = normalizeAppName(item.processName, item.appName);
@@ -157,7 +175,13 @@ export async function getStats(query: StatsQuery) {
 
     const site = inferSiteLabel(item);
     if (site) {
-      siteMap.set(site, (siteMap.get(site) ?? 0) + item.durationMs);
+      const key = normalizeSiteKey(site);
+      const current = siteMap.get(key);
+      if (current) {
+        current.durationMs += item.durationMs;
+      } else {
+        siteMap.set(key, { name: site, durationMs: item.durationMs });
+      }
     }
   }
 
@@ -174,8 +198,7 @@ export async function getStats(query: StatsQuery) {
     .map(([name, durationMs]) => ({ name, durationMs }))
     .sort((a, b) => b.durationMs - a.durationMs);
 
-  const sites = [...siteMap.entries()]
-    .map(([name, durationMs]) => ({ name, durationMs }))
+  const sites = [...siteMap.values()]
     .sort((a, b) => b.durationMs - a.durationMs);
 
   return {
