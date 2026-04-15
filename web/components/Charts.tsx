@@ -34,9 +34,11 @@ export default function Charts({ apps, sites, byDay }: Props) {
       {
         label: 'Tempo',
         data: apps.slice(0, 8).map((x) => toHours(x.durationMs)),
-        backgroundColor: '#3b82f6',
-        borderRadius: 8,
-        borderSkipped: false
+        backgroundColor: '#00d9ff',
+        borderRadius: 6,
+        borderSkipped: false,
+        borderColor: 'rgba(0, 217, 255, 0.5)',
+        borderWidth: 1
       }
     ]
   };
@@ -46,7 +48,7 @@ export default function Charts({ apps, sites, byDay }: Props) {
     datasets: [
       {
         data: sites.slice(0, 8).map((x) => toHours(x.durationMs)),
-        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#0ea5e9', '#6366f1', '#8b5cf6']
+        backgroundColor: ['#ff006e', '#ffbe0b', '#00d9ff', '#00ff88', '#ff3366', '#00ccff', '#ffaa00', '#ff1493']
       }
     ]
   };
@@ -60,9 +62,11 @@ export default function Charts({ apps, sites, byDay }: Props) {
       {
         label: 'Tempo por dia',
         data: byDay.map((x) => toHours(x.durationMs)),
-        backgroundColor: '#3b82f6',
-        borderRadius: 8,
-        borderSkipped: false
+        backgroundColor: '#00d9ff',
+        borderRadius: 6,
+        borderSkipped: false,
+        borderColor: 'rgba(0, 217, 255, 0.5)',
+        borderWidth: 1
       }
     ]
   };
@@ -83,7 +87,12 @@ export default function Charts({ apps, sites, byDay }: Props) {
               scales: {
                 y: {
                   beginAtZero: true,
-                  title: { display: true, text: 'Horas' }
+                  grid: { color: 'rgba(0, 217, 255, 0.1)' },
+                  ticks: { color: 'rgba(224, 230, 255, 0.7)' }
+                },
+                x: {
+                  grid: { color: 'rgba(0, 217, 255, 0.05)' },
+                  ticks: { color: 'rgba(224, 230, 255, 0.7)' }
                 }
               }
             }}
@@ -105,7 +114,8 @@ export default function Charts({ apps, sites, byDay }: Props) {
                   position: 'bottom',
                   labels: {
                     padding: 16,
-                    font: { size: 13 }
+                    font: { size: 13 },
+                    color: 'rgba(224, 230, 255, 0.7)'
                   }
                 }
               }
@@ -128,7 +138,12 @@ export default function Charts({ apps, sites, byDay }: Props) {
               scales: {
                 y: {
                   beginAtZero: true,
-                  title: { display: true, text: 'Horas' }
+                  grid: { color: 'rgba(0, 217, 255, 0.1)' },
+                  ticks: { color: 'rgba(224, 230, 255, 0.7)' }
+                },
+                x: {
+                  grid: { color: 'rgba(0, 217, 255, 0.05)' },
+                  ticks: { color: 'rgba(224, 230, 255, 0.7)' }
                 }
               }
             }}
