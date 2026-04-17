@@ -23,13 +23,15 @@ async function main() {
     where: { username },
     update: {
       passwordHash,
-      email
+      email,
+      role: 'ADMIN'
     },
     create: {
       id,
       username,
       email,
-      passwordHash
+      passwordHash,
+      role: 'ADMIN'
     }
   });
 

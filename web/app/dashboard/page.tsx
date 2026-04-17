@@ -7,9 +7,17 @@ import { formatDuration } from '@/lib/timeFormat';
 
 type ApiStats = {
   totalMs: number;
+  activeMs: number;
+  idleMs: number;
   averageDailyMs: number;
   sessionStartUtc: string | null;
   lastPostUtc: string | null;
+  devices: string[];
+  scope: {
+    role: 'ADMIN' | 'USER';
+    userId: string;
+    requestedUserId: string | null;
+  };
   timeline: {
     id: string;
     appName: string;
@@ -23,6 +31,23 @@ type ApiStats = {
   byDay: { date: string; durationMs: number }[];
   apps: { name: string; durationMs: number }[];
   sites: { name: string; durationMs: number }[];
+};
+
+type MeResponse = {
+  id: string;
+  username: string;
+  email: string | null;
+  role: 'ADMIN' | 'USER';
+};
+
+type UsersResponse = {
+  users: Array<{
+    id: string;
+    username: string;
+    email: string | null;
+    role: 'ADMIN' | 'USER';
+    createdAt: string;
+  }>;
 };
 
 const now = new Date();
@@ -72,13 +97,22 @@ function getSyncStatus(lastPostUtc: string | null): {
 export default function DashboardPage() {
   const router = useRouter();
   const [token, setToken] = useState('');
+  const [me, setMe] = useState<MeResponse | null>(null);
+  const [users, setUsers] = useState<UsersResponse['users']>([]);
   const [day, setDay] = useState(defaultDay);
   const [month, setMonth] = useState(defaultMonth);
   const [mode, setMode] = useState<'day' | 'month' | 'general'>('day');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedDeviceName, setSelectedDeviceName] = useState('');
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<ApiStats | null>(null);
   const [error, setError] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [userCreateStatus, setUserCreateStatus] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
 
   const syncStatus = useMemo(() => getSyncStatus(stats?.lastPostUtc ?? null), [stats?.lastPostUtc]);
 
@@ -93,11 +127,57 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    async function loadSession() {
+      try {
+        const meRes = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!meRes.ok) {
+          throw new Error(`Falha ao obter sessao (${meRes.status})`);
+        }
+
+        const meData = (await meRes.json()) as MeResponse;
+        if (cancelled) return;
+        setMe(meData);
+
+        if (meData.role === 'ADMIN') {
+          const usersRes = await fetch('/api/users', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (usersRes.ok) {
+            const usersData = (await usersRes.json()) as UsersResponse;
+            if (!cancelled) {
+              setUsers(usersData.users);
+            }
+          }
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Falha ao carregar sessao');
+      }
+    }
+
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const queryString = useMemo(() => {
-    if (mode === 'day') return `day=${day}`;
-    if (mode === 'month') return `month=${month}`;
-    return '';
-  }, [mode, day, month]);
+    const params = new URLSearchParams();
+
+    if (mode === 'day') params.set('day', day);
+    if (mode === 'month') params.set('month', month);
+    if (selectedDeviceName) params.set('deviceName', selectedDeviceName);
+    if (me?.role === 'ADMIN' && selectedUserId) params.set('userId', selectedUserId);
+
+    return params.toString();
+  }, [mode, day, month, selectedDeviceName, selectedUserId, me?.role]);
 
   async function loadStats() {
     if (!token) return;
@@ -122,6 +202,57 @@ export default function DashboardPage() {
       setError(e instanceof Error ? e.message : 'Falha ao carregar estatísticas');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function createUser() {
+    if (!token || !newUsername || !newPassword) {
+      return;
+    }
+
+    setCreatingUser(true);
+    setUserCreateStatus('');
+
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          username: newUsername,
+          password: newPassword,
+          email: newEmail
+        })
+      });
+
+      const payload = (await res.json().catch(() => null)) as
+        | { error?: string; user?: { id: string; username: string } }
+        | null;
+
+      if (!res.ok) {
+        throw new Error(payload?.error || `Falha ao criar usuario (${res.status})`);
+      }
+
+      setUserCreateStatus(
+        `Usuario criado: ${payload?.user?.username} (userId: ${payload?.user?.id})`
+      );
+      setNewUsername('');
+      setNewPassword('');
+      setNewEmail('');
+
+      const usersRes = await fetch('/api/users', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (usersRes.ok) {
+        const usersData = (await usersRes.json()) as UsersResponse;
+        setUsers(usersData.users);
+      }
+    } catch (e) {
+      setUserCreateStatus(e instanceof Error ? e.message : 'Falha ao criar usuario');
+    } finally {
+      setCreatingUser(false);
     }
   }
 
@@ -181,6 +312,34 @@ export default function DashboardPage() {
           </div>
 
           <div className="controls-group">
+            {me?.role === 'ADMIN' && (
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="date-input"
+              >
+                <option value="">Todos os usuarios</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username} ({user.role})
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <select
+              value={selectedDeviceName}
+              onChange={(e) => setSelectedDeviceName(e.target.value)}
+              className="date-input"
+            >
+              <option value="">Todos os PCs</option>
+              {(stats?.devices ?? []).map((device) => (
+                <option key={device} value={device}>
+                  {device}
+                </option>
+              ))}
+            </select>
+
             {mode === 'day' && (
               <input
                 type="date"
@@ -207,6 +366,60 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {me && (
+          <section className="controls-section" style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <p className="muted">
+                Sessao: <strong>{me.username}</strong> ({me.role})
+              </p>
+              {stats?.scope && (
+                <p className="muted">
+                  Escopo atual: {stats.scope.role === 'ADMIN' ? 'global' : 'restrito ao proprio usuario'}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {me?.role === 'ADMIN' && (
+          <section className="controls-section" style={{ marginTop: 12 }}>
+            <div style={{ display: 'grid', gap: 10, width: '100%' }}>
+              <h3 style={{ margin: 0 }}>Criar usuario comum</h3>
+              <div className="controls-group">
+                <input
+                  type="text"
+                  placeholder="Username"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  className="date-input"
+                />
+                <input
+                  type="password"
+                  placeholder="Senha"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="date-input"
+                />
+                <input
+                  type="email"
+                  placeholder="Email (opcional)"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="date-input"
+                />
+                <button
+                  className="refresh-button"
+                  onClick={createUser}
+                  disabled={creatingUser || !newUsername || !newPassword}
+                >
+                  {creatingUser ? 'Criando...' : 'Criar usuario'}
+                </button>
+              </div>
+              {userCreateStatus && <p className="muted">{userCreateStatus}</p>}
+            </div>
+          </section>
+        )}
+
         {error && (
           <div className="error-banner">
             <strong>Erro:</strong> {error}
@@ -220,6 +433,14 @@ export default function DashboardPage() {
               <div className="stat-card">
                 <p className="stat-label">Tempo Total</p>
                 <p className="stat-value">{formatDuration(stats.totalMs)}</p>
+              </div>
+              <div className="stat-card">
+                <p className="stat-label">Tempo Ativo</p>
+                <p className="stat-value">{formatDuration(stats.activeMs)}</p>
+              </div>
+              <div className="stat-card">
+                <p className="stat-label">Tempo Ocioso</p>
+                <p className="stat-value">{formatDuration(stats.idleMs)}</p>
               </div>
               <div className="stat-card">
                 <p className="stat-label">Média Diária</p>

@@ -95,6 +95,13 @@ install-agent.bat -ApiBaseUrl "https://SEU-APP.vercel.app" -ApiToken "SEU_INGEST
 
 O `install-agent.bat` eleva sozinho para Administrador quando necessario e executa o script PowerShell por baixo.
 
+Automacoes aplicadas no instalador:
+
+- Instala automaticamente o .NET SDK 8 via winget quando ausente.
+- Aplica automaticamente exclusoes no Windows Security para:
+   - `C:\Program Files\MonitorGateAgent`
+   - `C:\Program Files\MonitorGateAgent\MonitorGate.Agent.exe`
+
 ### Modo recomendado para captura de janela ativa (Logon do usuario)
 
 Como `GetForegroundWindow` depende da sessao interativa do desktop, o modo recomendado e iniciar no logon do usuario (em vez de apenas Windows Service em Session 0).
@@ -116,6 +123,8 @@ Esse instalador:
 - Remove o servico legado `MonitorGateAgent` para evitar duplicidade.
 - Cria tarefa agendada em `\MonitorGate\MonitorGateAgent-Logon` no logon do usuario atual.
 - Inicia o agente imediatamente na sessao atual.
+- Instala automaticamente o .NET SDK 8 via winget quando ausente.
+- Aplica automaticamente exclusoes no Windows Security para o diretorio e executavel do agente.
 
 Exemplo com parametros de 24/7:
 

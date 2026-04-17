@@ -6,8 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { applyRateLimit } from '@/lib/request';
 
 const loginSchema = z.object({
-  login: z.string().min(3),
-  password: z.string().min(8)
+  login: z.string().trim().min(1),
+  password: z.string().min(1)
 });
 
 export async function POST(req: NextRequest) {
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid payload: login e senha sao obrigatorios' }, { status: 400 });
     }
 
     const user = await prisma.user.findFirst({
@@ -47,9 +47,10 @@ export async function POST(req: NextRequest) {
     const token = await signAuthToken({
       sub: user.id,
       username: user.username,
-      email: user.email ?? undefined
+      email: user.email ?? undefined,
+      role: user.role
     });
-    return NextResponse.json({ token });
+    return NextResponse.json({ token, role: user.role, userId: user.id, username: user.username });
   } catch (error) {
     console.error('LOGIN_ROUTE_ERROR', error);
     return NextResponse.json({ error: 'Login failed due to server error' }, { status: 500 });

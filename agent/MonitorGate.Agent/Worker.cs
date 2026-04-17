@@ -44,7 +44,8 @@ public sealed class Worker : BackgroundService
                 _sessionId,
                 _options.UserId,
                 _options.DeviceName,
-                _options.ForegroundSliceSeconds
+                _options.ForegroundSliceSeconds,
+                _options.IdleThresholdSeconds
             );
             if (sample is not null)
             {

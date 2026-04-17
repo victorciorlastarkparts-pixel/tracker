@@ -11,11 +11,21 @@ agent/MonitorGate.Agent/appsettings.Development.json
 **/bin/
 **/obj/
 agent/publish/
+agent/MonitorGate.Agent/publish/
+
+# Build artifacts and large binaries
+*.exe
+*.msi
+*.zip
 
 # Local data
 *.db
 *.db-shm
 *.db-wal
+
+# Logs
+*.log
+agent/install-logon-log.txt
 
 # OS
 .DS_Store

@@ -4,6 +4,16 @@ using System.Text;
 
 public static class NativeMethods
 {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LastInputInfo
+    {
+        public uint Size;
+        public uint Time;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetLastInputInfo(ref LastInputInfo plii);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
@@ -15,6 +25,32 @@ public static class NativeMethods
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    public static PresenceState ReadPresenceState(int idleThresholdSeconds)
+    {
+        int safeThreshold = Math.Max(1, idleThresholdSeconds);
+        double idleSeconds = GetIdleSeconds();
+        string state = idleSeconds >= safeThreshold ? "ocioso" : "ativo";
+        return new PresenceState(state);
+    }
+
+    private static double GetIdleSeconds()
+    {
+        LastInputInfo lii = new()
+        {
+            Size = (uint)Marshal.SizeOf<LastInputInfo>()
+        };
+
+        if (!GetLastInputInfo(ref lii))
+        {
+            return 0;
+        }
+
+        long tickNow = Environment.TickCount64;
+        long tickLastInput = lii.Time;
+        long idleMs = Math.Max(0, tickNow - tickLastInput);
+        return idleMs / 1000d;
+    }
 
     public static ForegroundState? ReadForegroundWindow(BrowserInspector browserInspector)
     {

@@ -20,7 +20,7 @@ if not exist "%PS1%" (
 )
 
 echo Executando instalador do agente...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -LogPath "%LOGFILE%" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -AutoInstallDotNet:$true -ConfigureDefenderExclusions:$true -LogPath "%LOGFILE%" %*
 set "EXITCODE=%ERRORLEVEL%"
 
 if not "%EXITCODE%"=="0" (

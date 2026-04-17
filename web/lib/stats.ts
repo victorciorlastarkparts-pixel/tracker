@@ -1,7 +1,9 @@
 import { prisma } from './prisma';
 
 export type StatsQuery = {
-  userId: string;
+  userId?: string;
+  userIds?: string[];
+  deviceName?: string;
   month?: string;
   day?: string;
 };
@@ -118,8 +120,16 @@ function toMonthRange(month?: string): { start: Date; end: Date } | null {
 export async function getStats(query: StatsQuery) {
   const dayRange = toDayRange(query.day);
   const monthRange = toMonthRange(query.month);
+  const normalizedUserIds = query.userIds?.filter((x) => !!x);
+  const userFilter = normalizedUserIds?.length
+    ? { in: normalizedUserIds }
+    : query.userId
+      ? query.userId
+      : undefined;
+
   const where = {
-    userId: query.userId,
+    ...(userFilter ? { userId: userFilter } : {}),
+    ...(query.deviceName ? { deviceName: query.deviceName } : {}),
     ...(dayRange
       ? { startUtc: { gte: dayRange.start, lt: dayRange.end } }
       : monthRange
@@ -144,10 +154,11 @@ export async function getStats(query: StatsQuery) {
   })) as ActivityRow[];
 
   const latestPostedActivity = await prisma.activity.findFirst({
-    where: { userId: query.userId },
+    where,
     orderBy: { createdAt: 'desc' },
     select: {
       sessionId: true,
+      userId: true,
       createdAt: true
     }
   });
@@ -155,7 +166,7 @@ export async function getStats(query: StatsQuery) {
   const sessionStartAggregate = latestPostedActivity
     ? await prisma.activity.aggregate({
         where: {
-          userId: query.userId,
+          userId: latestPostedActivity.userId,
           sessionId: latestPostedActivity.sessionId
         },
         _min: {
@@ -165,6 +176,12 @@ export async function getStats(query: StatsQuery) {
     : null;
 
   const totalMs = activities.reduce((acc: number, a: { durationMs: number }) => acc + a.durationMs, 0);
+  const activeMs = activities
+    .filter((item) => item.processName === 'presence' && item.appName.toLowerCase() === 'ativo')
+    .reduce((acc, item) => acc + item.durationMs, 0);
+  const idleMs = activities
+    .filter((item) => item.processName === 'presence' && item.appName.toLowerCase() === 'ocioso')
+    .reduce((acc, item) => acc + item.durationMs, 0);
 
   const appMap = new Map<string, number>();
   const siteMap = new Map<string, { name: string; durationMs: number }>();
@@ -201,14 +218,32 @@ export async function getStats(query: StatsQuery) {
   const sites = [...siteMap.values()]
     .sort((a, b) => b.durationMs - a.durationMs);
 
+  const deviceRows = await prisma.activity.findMany({
+    where: {
+      ...(userFilter ? { userId: userFilter } : {})
+    },
+    distinct: ['deviceName'],
+    select: {
+      deviceName: true
+    },
+    orderBy: {
+      deviceName: 'asc'
+    }
+  });
+
+  const devices = deviceRows.map((row) => row.deviceName);
+
   return {
     totalMs,
+    activeMs,
+    idleMs,
     averageDailyMs: byDay.length ? Math.round(totalMs / byDay.length) : 0,
     sessionStartUtc: sessionStartAggregate?._min.startUtc?.toISOString() ?? null,
     lastPostUtc: latestPostedActivity?.createdAt.toISOString() ?? null,
     timeline: activities,
     byDay,
     apps,
-    sites
+    sites,
+    devices
   };
 }

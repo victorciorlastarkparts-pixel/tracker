@@ -14,6 +14,7 @@ export type AuthPayload = {
   sub: string;
   username: string;
   email?: string;
+  role: 'ADMIN' | 'USER';
 };
 
 export async function signAuthToken(payload: AuthPayload) {

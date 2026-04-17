@@ -9,9 +9,13 @@ param(
   [string]$DeviceName = $env:COMPUTERNAME,
   [int]$PollIntervalMs = 1000,
   [int]$ForegroundSliceSeconds = 2,
+  [int]$IdleThresholdSeconds = 40,
   [int]$SyncIntervalSeconds = 120,
   [int]$BatchSize = 300,
   [bool]$SendFullUrl = $false,
+  [bool]$AutoInstallDotNet = $true,
+  [bool]$ConfigureDefenderExclusions = $true,
+  [string]$DotNetMajorVersion = '8',
   [string]$NuGetSource = 'https://api.nuget.org/v3/index.json',
   [string]$TaskName = 'MonitorGateAgent-Logon',
   [string]$LogPath = ''
@@ -24,6 +28,88 @@ $installDir = Join-Path $env:ProgramFiles 'MonitorGateAgent'
 $exePath = Join-Path $installDir 'MonitorGate.Agent.exe'
 $appSettingsPath = Join-Path $installDir 'appsettings.json'
 $runtime = 'win-x64'
+
+function Get-HasDotNetSdk {
+  param([string]$MajorVersion)
+
+  if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    return $false
+  }
+
+  $sdkList = & dotnet --list-sdks 2>$null
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($sdkList | Out-String))) {
+    return $false
+  }
+
+  foreach ($line in $sdkList) {
+    if ($line -match "^$([Regex]::Escape($MajorVersion))\.") {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Install-DotNetSdkIfNeeded {
+  param([string]$MajorVersion)
+
+  if (Get-HasDotNetSdk -MajorVersion $MajorVersion) {
+    Write-Host ".NET SDK $MajorVersion detectado."
+    return
+  }
+
+  if (-not $AutoInstallDotNet) {
+    throw ".NET SDK $MajorVersion nao encontrado. Ative -AutoInstallDotNet ou instale manualmente."
+  }
+
+  $winget = Get-Command winget -ErrorAction SilentlyContinue
+  if ($null -eq $winget) {
+    throw ".NET SDK $MajorVersion nao encontrado e winget indisponivel. Instale o .NET SDK manualmente e rode novamente."
+  }
+
+  Write-Host "Instalando .NET SDK $MajorVersion via winget..."
+  & winget install --id Microsoft.DotNet.SDK.$MajorVersion --exact --accept-package-agreements --accept-source-agreements --silent
+  if ($LASTEXITCODE -ne 0) {
+    throw "Falha ao instalar .NET SDK $MajorVersion via winget (codigo $LASTEXITCODE)."
+  }
+
+  $machinePath = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::Machine)
+  $userPath = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::User)
+  $env:Path = "$machinePath;$userPath"
+
+  if (-not (Get-HasDotNetSdk -MajorVersion $MajorVersion)) {
+    throw ".NET SDK $MajorVersion foi instalado, mas ainda nao esta disponivel. Abra novo terminal e tente novamente."
+  }
+
+  Write-Host ".NET SDK $MajorVersion instalado com sucesso."
+}
+
+function Ensure-DefenderExclusions {
+  param(
+    [string]$InstallDirectory,
+    [string]$ExecutablePath
+  )
+
+  if (-not $ConfigureDefenderExclusions) {
+    return
+  }
+
+  $addMpPreference = Get-Command Add-MpPreference -ErrorAction SilentlyContinue
+  if ($null -eq $addMpPreference) {
+    Write-Warning 'Add-MpPreference nao disponivel. Pulando exclusoes no Windows Security.'
+    return
+  }
+
+  try {
+    Add-MpPreference -ExclusionPath $InstallDirectory -ErrorAction Stop
+    Add-MpPreference -ExclusionProcess $ExecutablePath -ErrorAction Stop
+    Write-Host 'Exclusoes do Windows Security aplicadas com sucesso.'
+  }
+  catch {
+    Write-Warning "Nao foi possivel aplicar exclusoes automaticamente: $($_.Exception.Message)"
+    Write-Warning 'Se necessario, adicione manualmente em Windows Security > Virus & threat protection > Exclusions.'
+  }
+}
 
 function Stop-AgentProcesses {
   try {
@@ -52,9 +138,7 @@ if (Test-Path $LogPath) {
 Start-Transcript -Path $LogPath -Force | Out-Null
 
 try {
-  if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    throw 'dotnet SDK nao encontrado no PATH. Instale o .NET 8 SDK e tente novamente.'
-  }
+  Install-DotNetSdkIfNeeded -MajorVersion $DotNetMajorVersion
 
   if (-not (Test-Path $projectPath)) {
     throw "Projeto nao encontrado: $projectPath"
@@ -135,12 +219,15 @@ try {
   $config.Agent.DeviceName = $DeviceName
   $config.Agent.PollIntervalMs = $PollIntervalMs
   $config.Agent.ForegroundSliceSeconds = $ForegroundSliceSeconds
+  $config.Agent.IdleThresholdSeconds = $IdleThresholdSeconds
   $config.Agent.SyncIntervalSeconds = $SyncIntervalSeconds
   $config.Agent.BatchSize = $BatchSize
   $config.Agent.ApiBaseUrl = $ApiBaseUrl
   $config.Agent.ApiToken = $ApiToken
   $config.Agent.SendFullUrl = $SendFullUrl
   $config | ConvertTo-Json -Depth 6 | Set-Content $appSettingsPath -Encoding UTF8
+
+  Ensure-DefenderExclusions -InstallDirectory $installDir -ExecutablePath $exePath
 
   Write-Host 'Criando tarefa agendada no logon...'
   $action = New-ScheduledTaskAction -Execute $exePath
