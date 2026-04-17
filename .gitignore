@@ -12,6 +12,8 @@ agent/MonitorGate.Agent/appsettings.Development.json
 **/obj/
 agent/publish/
 agent/MonitorGate.Agent/publish/
+agent/_InstallKit/
+agent/_kit-temp-publish/
 
 # Build artifacts and large binaries
 *.exe

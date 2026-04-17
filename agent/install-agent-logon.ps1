@@ -111,11 +111,63 @@ function Ensure-DefenderExclusions {
   }
 }
 
+function Start-AgentBestEffort {
+  param(
+    [string]$ExecutablePath,
+    [string]$TaskPath,
+    [string]$TaskName
+  )
+
+  try {
+    Start-Process -FilePath $ExecutablePath -WindowStyle Hidden -ErrorAction Stop
+    Write-Host 'Agente iniciado na sessao atual.'
+    return
+  }
+  catch {
+    Write-Warning "Nao foi possivel iniciar o agente diretamente: $($_.Exception.Message)"
+  }
+
+  try {
+    $cmdLine = "`"$ExecutablePath`""
+    Start-Process -FilePath cmd.exe -ArgumentList '/c', 'start', '""', $cmdLine -WindowStyle Hidden -ErrorAction Stop
+    Write-Host 'Agente iniciado via cmd.exe.'
+    return
+  }
+  catch {
+    Write-Warning "Nao foi possivel iniciar via cmd.exe: $($_.Exception.Message)"
+  }
+
+  try {
+    Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop
+    Write-Host 'Agente iniciado via tarefa agendada.'
+  }
+  catch {
+    Write-Warning "Falha ao iniciar via tarefa agendada: $($_.Exception.Message)"
+    Write-Warning 'Instalacao concluida, mas o inicio imediato falhou. O agente iniciara no proximo logon.'
+  }
+}
+
 function Stop-AgentProcesses {
   try {
     Get-Process -Name 'MonitorGate.Agent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
   }
   catch {
+  }
+}
+
+function Unblock-PublishedFiles {
+  param([string]$FolderPath)
+
+  if (-not (Test-Path $FolderPath)) {
+    return
+  }
+
+  Get-ChildItem -Path $FolderPath -Recurse -File | ForEach-Object {
+    try {
+      Unblock-File -Path $_.FullName -ErrorAction Stop
+    }
+    catch {
+    }
   }
 }
 
@@ -213,6 +265,8 @@ try {
     throw "appsettings.json nao encontrado apos copia: $appSettingsPath"
   }
 
+  Unblock-PublishedFiles -FolderPath $installDir
+
   Write-Host 'Atualizando appsettings.json...'
   $config = Get-Content $appSettingsPath -Raw | ConvertFrom-Json
   $config.Agent.UserId = $UserId
@@ -238,7 +292,7 @@ try {
   Register-ScheduledTask -TaskName $TaskName -TaskPath $taskPath -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'MonitorGate Agent iniciado no logon do usuario.' | Out-Null
 
   Write-Host 'Iniciando agente agora (sessao atual)...'
-  Start-Process -FilePath $exePath -WindowStyle Hidden
+  Start-AgentBestEffort -ExecutablePath $exePath -TaskPath $taskPath -TaskName $TaskName
 
   Write-Host 'Instalacao concluida com sucesso (modo logon).'
   Write-Host "Tarefa: $fullTaskName"

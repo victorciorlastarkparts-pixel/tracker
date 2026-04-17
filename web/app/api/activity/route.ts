@@ -61,13 +61,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Validation error', issues: parsed.error.issues }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { id: true } });
+  const assignment = await prisma.deviceAssignment.findUnique({
+    where: { deviceName: parsed.data.deviceName },
+    select: { userId: true }
+  });
+
+  const effectiveUserId = assignment?.userId ?? parsed.data.userId;
+
+  const user = await prisma.user.findUnique({ where: { id: effectiveUserId }, select: { id: true } });
   if (!user) {
     return NextResponse.json({ error: 'Unknown user' }, { status: 404 });
   }
 
   const rows = parsed.data.activities.map((item) => ({
-    userId: parsed.data.userId,
+    userId: effectiveUserId,
     sessionId: item.sessionId,
     deviceName: parsed.data.deviceName,
     appName: item.appName,
@@ -81,5 +88,10 @@ export async function POST(req: NextRequest) {
   }));
 
   await prisma.activity.createMany({ data: rows });
-  return NextResponse.json({ inserted: rows.length });
+  return NextResponse.json({
+    inserted: rows.length,
+    effectiveUserId,
+    sourceUserId: parsed.data.userId,
+    assignedByDevice: !!assignment
+  });
 }

@@ -20,6 +20,19 @@ model User {
   role         UserRole   @default(USER)
   createdAt    DateTime   @default(now())
   activities   Activity[]
+  deviceAssignments DeviceAssignment[]
+}
+
+model DeviceAssignment {
+  id         String   @id @default(cuid())
+  deviceName String   @unique
+  userId     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Activity {

@@ -50,6 +50,16 @@ type UsersResponse = {
   }>;
 };
 
+type DeviceAssignmentsResponse = {
+  devices: string[];
+  assignments: Array<{
+    deviceName: string;
+    userId: string;
+    username: string;
+    role: 'ADMIN' | 'USER';
+  }>;
+};
+
 const now = new Date();
 const defaultDay = now.toISOString().slice(0, 10);
 const defaultMonth = now.toISOString().slice(0, 7);
@@ -99,6 +109,8 @@ export default function DashboardPage() {
   const [token, setToken] = useState('');
   const [me, setMe] = useState<MeResponse | null>(null);
   const [users, setUsers] = useState<UsersResponse['users']>([]);
+  const [knownDevices, setKnownDevices] = useState<string[]>([]);
+  const [deviceAssignments, setDeviceAssignments] = useState<DeviceAssignmentsResponse['assignments']>([]);
   const [day, setDay] = useState(defaultDay);
   const [month, setMonth] = useState(defaultMonth);
   const [mode, setMode] = useState<'day' | 'month' | 'general'>('day');
@@ -113,6 +125,10 @@ export default function DashboardPage() {
   const [newEmail, setNewEmail] = useState('');
   const [userCreateStatus, setUserCreateStatus] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
+  const [assignDeviceName, setAssignDeviceName] = useState('');
+  const [assignUserId, setAssignUserId] = useState('');
+  const [assigningDevice, setAssigningDevice] = useState(false);
+  const [assignStatus, setAssignStatus] = useState('');
 
   const syncStatus = useMemo(() => getSyncStatus(stats?.lastPostUtc ?? null), [stats?.lastPostUtc]);
 
@@ -146,13 +162,27 @@ export default function DashboardPage() {
         setMe(meData);
 
         if (meData.role === 'ADMIN') {
-          const usersRes = await fetch('/api/users', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const [usersRes, assignmentsRes] = await Promise.all([
+            fetch('/api/users', {
+              headers: { Authorization: `Bearer ${token}` }
+            }),
+            fetch('/api/device-assignments', {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+          ]);
+
           if (usersRes.ok) {
             const usersData = (await usersRes.json()) as UsersResponse;
             if (!cancelled) {
               setUsers(usersData.users);
+            }
+          }
+
+          if (assignmentsRes.ok) {
+            const assignmentsData = (await assignmentsRes.json()) as DeviceAssignmentsResponse;
+            if (!cancelled) {
+              setKnownDevices(assignmentsData.devices);
+              setDeviceAssignments(assignmentsData.assignments);
             }
           }
         }
@@ -202,6 +232,60 @@ export default function DashboardPage() {
       setError(e instanceof Error ? e.message : 'Falha ao carregar estatísticas');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshAssignments() {
+    if (!token || me?.role !== 'ADMIN') {
+      return;
+    }
+
+    const res = await fetch('/api/device-assignments', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!res.ok) {
+      return;
+    }
+
+    const payload = (await res.json()) as DeviceAssignmentsResponse;
+    setKnownDevices(payload.devices);
+    setDeviceAssignments(payload.assignments);
+  }
+
+  async function assignDeviceToUser() {
+    if (!token || me?.role !== 'ADMIN' || !assignDeviceName) {
+      return;
+    }
+
+    setAssigningDevice(true);
+    setAssignStatus('');
+
+    try {
+      const res = await fetch('/api/device-assignments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          deviceName: assignDeviceName,
+          userId: assignUserId || null
+        })
+      });
+
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(payload?.error || `Falha ao atribuir dispositivo (${res.status})`);
+      }
+
+      setAssignStatus(assignUserId ? 'Atribuicao salva com sucesso.' : 'Atribuicao removida com sucesso.');
+      await refreshAssignments();
+      await loadStats();
+    } catch (e) {
+      setAssignStatus(e instanceof Error ? e.message : 'Falha ao atribuir dispositivo');
+    } finally {
+      setAssigningDevice(false);
     }
   }
 
@@ -333,7 +417,7 @@ export default function DashboardPage() {
               className="date-input"
             >
               <option value="">Todos os PCs</option>
-              {(stats?.devices ?? []).map((device) => (
+              {Array.from(new Set([...(stats?.devices ?? []), ...knownDevices])).map((device) => (
                 <option key={device} value={device}>
                   {device}
                 </option>
@@ -376,6 +460,64 @@ export default function DashboardPage() {
                 <p className="muted">
                   Escopo atual: {stats.scope.role === 'ADMIN' ? 'global' : 'restrito ao proprio usuario'}
                 </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {me?.role === 'ADMIN' && (
+          <section className="controls-section" style={{ marginTop: 12 }}>
+            <div style={{ display: 'grid', gap: 10, width: '100%' }}>
+              <h3 style={{ margin: 0 }}>Atribuir PC para usuario</h3>
+              <div className="controls-group">
+                <select
+                  value={assignDeviceName}
+                  onChange={(e) => setAssignDeviceName(e.target.value)}
+                  className="date-input"
+                >
+                  <option value="">Selecione um PC</option>
+                  {Array.from(new Set([...(stats?.devices ?? []), ...knownDevices])).map((device) => (
+                    <option key={device} value={device}>
+                      {device}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={assignUserId}
+                  onChange={(e) => setAssignUserId(e.target.value)}
+                  className="date-input"
+                >
+                  <option value="">Sem atribuicao</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.username} ({user.role})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="refresh-button"
+                  onClick={assignDeviceToUser}
+                  disabled={assigningDevice || !assignDeviceName}
+                >
+                  {assigningDevice ? 'Salvando...' : 'Salvar atribuicao'}
+                </button>
+              </div>
+
+              {assignStatus && <p className="muted">{assignStatus}</p>}
+
+              {deviceAssignments.length > 0 && (
+                <div className="ranking-list">
+                  {deviceAssignments.map((item) => (
+                    <div key={item.deviceName} className="ranking-item">
+                      <div className="ranking-info">
+                        <span className="ranking-name">{item.deviceName}</span>
+                      </div>
+                      <span className="ranking-time">{item.username}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </section>
